@@ -64,9 +64,12 @@ def run_simulation(WitObj, sim_time: int) -> None:
     """
     WitObj.Stop()
     WitObj.Begin()
-    WitObj.Run(sim_time)
 
+    WitObj.Batch(sim_time)
+
+    time.sleep(1)
     while WitObj.ModelStatus == 1:
         time.sleep(1)
     
     WitObj.Stop()
+    time.sleep(1)
