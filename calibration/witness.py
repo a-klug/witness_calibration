@@ -42,7 +42,7 @@ def write_table(WitObj, table_name: str, column_number: int, data: np.array) -> 
         The name of the table
     column_number: int
         The number of the column to write
-    data: list
+    data: np.array
         The data to write
     """
     t_length = int(WitObj.Expression(f"DTGetRowCount({table_name})"))

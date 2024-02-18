@@ -4,15 +4,40 @@ import win32com.client as wc
 from scipy.optimize import minimize
 import numpy as np
 
+############################################
+###### Fill in your parameters here ########
+############################################
+
+# input table in Witness which contains the TBEs for all machines
+input_tbe_table = "Tables.it_factTBE"
+
+# the column in the input table which contains mean time between failures, assuming a negative exponential distribution
+input_tbe_column = 3
+
+# the chart in Witness which contains the repair time
+utilisation_chart = "Charts.UtilMachine01.Utilisation"
+
+# the column in the chart which contains the repair time
+utilisation_chart_column = 6
+
+# the file which contains the historical repair times
+historical_file = "historicals.csv"
+
+# the runtime of the simulation
+simulation_runtime = 5832
+
+############################################
+
+
 def objective_function(tbes: np.array) -> float:
     # Update the TBEs in the model
-    write_table(WitObj, "Tables.it_factTBE", 3, tbes)
+    write_table(WitObj, input_tbe_table, input_tbe_column, tbes)
 
     # Run the simulation
-    run_simulation(WitObj, run_time)
+    run_simulation(WitObj, simulation_runtime)
 
     # Get the repair time
-    repair_time = read_table(WitObj, "Charts.UtilMachine01.Utilisation", 6)
+    repair_time = read_table(WitObj, utilisation_chart, utilisation_chart_column)
 
     # Return the error
     error = np.sum((repair_time - historicals)**2)
@@ -23,15 +48,17 @@ def objective_function(tbes: np.array) -> float:
 WitObj = wc.GetObject(Class="Witness.WCL")
 
 # Get the starting TBEs
-tbes = read_table(WitObj, "Tables.it_factTBE", 3)
+tbes = read_table(WitObj, input_tbe_table, input_tbe_column)
 
 # Get the historical repair times
-historicals = read_csv_table("historicals.csv")
-
-# Set the simulation time
-run_time = 5832
+historicals = read_csv_table(historical_file)
 
 # Run the optimisation
 WitObj.BeginOLE()
-result = minimize(objective_function, tbes,method='Nelder-Mead')
+result = minimize(objective_function, tbes,method='BFGS')
 WitObj.EndOLE()
+
+# Save the TBEs
+with open("tbes.txt", "w") as file:
+    for tbe in result.x:
+        file.write(str(tbe) + "\n")
