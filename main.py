@@ -7,7 +7,7 @@ from skopt import gp_minimize
 from skopt.space import Real
 from skopt.utils import use_named_args
 
-runtime = 5832
+runtime = 500
 
 WitObj = wc.GetObject(Class="Witness.WCL") 
 
@@ -21,14 +21,14 @@ def get_sim_repair(machine_id, mtbf_values):
 
     # Get the downtime data
     downtime = get_downtime(WitObj)
-    downtime = downtime[downtime['Process ID'] == machine_id,'Duration'].value
+    downtime = downtime.loc[downtime['Process ID'] == machine_id,'Duration'].values
 
     return downtime
 
 # Optimizes the MTBF values for a single machine
 def optimize_machine(machine_id, num_categories, historical_data):
     # Create the parameter space dynamically based on the number of categories
-    space = [Real(0.01, 1000, name=f'mtbf_category_{i+1}') for i in range(num_categories)]
+    space = [Real(5, 100, name=f'mtbf_category_{i+1}') for i in range(num_categories)]
     
     # Define the objective function for optimization, adjusted for varying numbers of categories
     @use_named_args(space)
@@ -36,10 +36,11 @@ def optimize_machine(machine_id, num_categories, historical_data):
         mtbf_values = np.array(list(params.values()))
         sim_repair = get_sim_repair(machine_id, mtbf_values)
         cost = np.sum((sim_repair - historical_data)**2)
+        print(cost)
         return cost
     
     # Perform Bayesian Optimization
-    result = gp_minimize(objective,                    # the function to minimize
+    result = gp_minimize(objective,                   # the function to minimize
                          space,                       # the bounds on each dimension of x
                          acq_func="gp_hedge",         # the acquisition function
                          n_calls=50,                  # the number of evaluations of f
@@ -52,14 +53,17 @@ def optimize_machine(machine_id, num_categories, historical_data):
 
 
 # List of machines
-machine_list = [1001,1002]
+machine_list = [1,2]
 
 # Get historicals
-historicals = pd.read_excel('historicals.xlsx')
+# historicals = pd.read_excel('historicals.xlsx')
+historicals = pd.read_excel(
+    r"C:\Users\AsherKlug\OneDrive - BSC Holdings\Automated Witness Calibration\Model\historicals.xlsx"
+)
 
 # Loop over the machine list
 for p in machine_list:
-    historical_data = historicals[historicals['Process ID'] == p]['Duration'].values
+    historical_data = historicals.loc[historicals['Process ID'] == p, "Duration"].values
     num_categories = len(historical_data)
     print(f"Optimizing MTBF values for Machine {p} with {num_categories} categories")
     optimize_machine(p, num_categories, historical_data)
