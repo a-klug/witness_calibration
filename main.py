@@ -15,7 +15,7 @@ class OptimizationStopException(Exception):
 historical_file = "historicals.xlsx"
 
 # the runtime of the simulation
-simulation_runtime = 1000
+simulation_runtime = 5832
 
 ############################################
 
@@ -27,6 +27,8 @@ processes = set()
 t_length = int(WitObj.Expression("DTGetRowCount(Tables.it_factTBE)"))
 for id in range(t_length):
     processes.add(int(WitObj.Expression(f"Tables.it_factTBE[{id+1},7]")))
+
+processes = [1001,1002,1003,3001]
 
 # read the historical repair times
 historical = pd.read_excel(historical_file)
@@ -56,7 +58,7 @@ def objective_function(tbes: np.array) -> float:
     return cost
 
 def callback_function(tbes):
-    if objective_function(tbes) < 0.5:
+    if objective_function(tbes) < 1e-5:
         raise OptimizationStopException
 
 for p in processes:
@@ -68,7 +70,8 @@ for p in processes:
 
     print("Optimising for process", p)
     # minimise the cost function
-    try:
-        result = minimize(objective_function, initial_tbes, method="Nelder-Mead", callback=callback_function)
-    except OptimizationStopException:
-        print("Optimization stopped as the objective function returned a value smaller than 0.5.")
+    # try:
+    #     result = minimize(objective_function, initial_tbes, method="Nelder-Mead", callback=callback_function)
+    # except OptimizationStopException:
+    #     print("Optimization stopped as the objective function returned a value smaller than 1e-5.")
+    result = minimize(objective_function, initial_tbes, method="COBYLA")
