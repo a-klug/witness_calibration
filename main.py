@@ -3,75 +3,63 @@ import win32com.client as wc
 from scipy.optimize import minimize
 import numpy as np
 import pandas as pd
+from skopt import gp_minimize
+from skopt.space import Real
+from skopt.utils import use_named_args
 
-class OptimizationStopException(Exception):
-    pass
+runtime = 5832
 
-############################################
-###### Fill in your parameters here ########
-############################################
+WitObj = wc.GetObject(Class="Witness.WCL") 
 
-# the file which contains the historical repair times
-historical_file = "historicals.xlsx"
-
-# the runtime of the simulation
-simulation_runtime = 5832
-
-############################################
-
-# connect to witness
-WitObj = wc.GetObject(Class="Witness.WCL")
-
-# get unique list of processes in the simulation
-processes = set()
-t_length = int(WitObj.Expression("DTGetRowCount(Tables.it_factTBE)"))
-for id in range(t_length):
-    processes.add(int(WitObj.Expression(f"Tables.it_factTBE[{id+1},7]")))
-
-processes = [1001,1002,1003,3001]
-
-# read the historical repair times
-historical = pd.read_excel(historical_file)
-
-# We need to work systematically over the processes
-# For each process, we will:
-# 1. Get the expected duration of maintenance for the maintenance ID
-# 2. Get the simulated duration of maintenance for the same maintenance ID
-# 3. Compare the two using a cost function
-# 4. Minimise the cost function to find the best fit parameters
-
-def objective_function(tbes: np.array) -> float:
-    # Write the tbes to the witness model
-    write_tbes(WitObj, tbes, p)
+# Assuming there's a placeholder function to run the simulation
+def get_sim_repair(machine_id, mtbf_values):
+    # Write the MTBF values to the witness model
+    write_tbes(WitObj, mtbf_values, machine_id)
 
     # Run the simulation
-    run_simulation(WitObj, simulation_runtime)
+    run_simulation(WitObj, runtime)
 
-    # Get the simulated downtime
-    sim_downtime = get_downtime(WitObj)
-    sim_downtime = sim_downtime.loc[sim_downtime["Process ID"] == p,'Duration'].values
+    # Get the downtime data
+    downtime = get_downtime(WitObj)
+    downtime = downtime[downtime['Process ID'] == machine_id,'Duration'].value
 
-    # Calculate the cost function
-    cost = np.sum((hist_downtime - sim_downtime)**2)
+    return downtime
 
-    print(cost)
-    return cost
+# Optimizes the MTBF values for a single machine
+def optimize_machine(machine_id, num_categories, historical_data):
+    # Create the parameter space dynamically based on the number of categories
+    space = [Real(0.01, 1000, name=f'mtbf_category_{i+1}') for i in range(num_categories)]
+    
+    # Define the objective function for optimization, adjusted for varying numbers of categories
+    @use_named_args(space)
+    def objective(**params):
+        mtbf_values = np.array(list(params.values()))
+        sim_repair = get_sim_repair(machine_id, mtbf_values)
+        cost = np.sum((sim_repair - historical_data)**2)
+        return cost
+    
+    # Perform Bayesian Optimization
+    result = gp_minimize(objective,                    # the function to minimize
+                         space,                       # the bounds on each dimension of x
+                         acq_func="gp_hedge",         # the acquisition function
+                         n_calls=50,                  # the number of evaluations of f
+                         n_random_starts=10,          # the number of random initialization points
+                         noise=0.1**2,                # the noise level (optional)
+                         random_state=123)            # the random seed
+    
+    print(f"Optimized MTBF values for Machine {machine_id}:", result.x)
+    print(f"Minimum cost achieved for Machine {machine_id}:", result.fun)
 
-def callback_function(tbes):
-    if objective_function(tbes) < 1e-5:
-        raise OptimizationStopException
 
-for p in processes:
-    # get the historical downtime for the process
-    hist_downtime = historical.loc[historical["Process ID"] == p,'Duration'].values
+# List of machines
+machine_list = [1001,1002]
 
-    # initial guess
-    initial_tbes = get_tbes(WitObj, p)
+# Get historicals
+historicals = pd.read_excel('historicals.xlsx')
 
-    print("Optimising for process", p)
-    # minimise the cost function
-    # try:
-    #     result = minimize(objective_function, initial_tbes, method="Nelder-Mead", callback=callback_function)
-    # except OptimizationStopException:
-    #     print("Optimization stopped as the objective function returned a value smaller than 1e-5.")
-    result = minimize(objective_function, initial_tbes, method="COBYLA")
+# Loop over the machine list
+for p in machine_list:
+    historical_data = historicals[historicals['Process ID'] == p]['Duration'].values
+    num_categories = len(historical_data)
+    print(f"Optimizing MTBF values for Machine {p} with {num_categories} categories")
+    optimize_machine(p, num_categories, historical_data)
