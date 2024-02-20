@@ -58,7 +58,7 @@ machine_list = [1,2]
 # Get historicals
 # historicals = pd.read_excel('historicals.xlsx')
 historicals = pd.read_excel(
-    r"C:\Users\AsherKlug\OneDrive - BSC Holdings\Automated Witness Calibration\Model\historicals.xlsx"
+    r"historicals.xlsx"
 )
 
 # Loop over the machine list
