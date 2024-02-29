@@ -3,15 +3,16 @@ import win32com.client as wc
 import numpy as np
 import pandas as pd
 
-runtime = 5832
+runtime = 5382
 
 WitObj = wc.GetObject(Class="Witness.WCL")
 
 historicals = pd.read_excel("historicals.xlsx")
+historicals = historicals.sort_values(by=["Process ID","Maintenance ID"])
 
 historicals = historicals.rename(columns={"Duration": "Historical Duration"})
 
-threshold = 0.1
+threshold = 0.05
 
 def get_process_list():
     """
@@ -44,6 +45,7 @@ def optimize_simulation() -> None:
     Returns:
     None
     """
+    print("Running simulation...\n")
     run_simulation(WitObj, runtime)
     process_list, data = get_process_list()
 
@@ -57,7 +59,7 @@ def optimize_simulation() -> None:
             sim = get_downtime(WitObj)
             sim = sim.loc[sim["Process ID"] == p,"Duration"].values 
 
-            updated_tbes = tbes*sim/hist
+            updated_tbes = tbes*sim/hist*1.05
 
             write_tbes(WitObj, updated_tbes, p)
         
