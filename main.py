@@ -1,69 +1,62 @@
-from calibration.witness import run_simulation, get_downtime, get_tbes, write_tbes
-import win32com.client as wc
-from scipy.optimize import minimize
-import numpy as np
 import pandas as pd
 from skopt import gp_minimize
 from skopt.space import Real
 from skopt.utils import use_named_args
+from skopt.plots import plot_convergence
 
-runtime = 500
+# Assume `simulate_entire_system` is a function that you have which runs the full simulation.
+# It should accept a dictionary where keys are `process_id` and values are lists of mean_times for each maintenance category
 
-WitObj = wc.GetObject(Class="Witness.WCL") 
-
-# Assuming there's a placeholder function to run the simulation
-def get_sim_repair(machine_id, mtbf_values):
-    # Write the MTBF values to the witness model
-    write_tbes(WitObj, mtbf_values, machine_id)
-
-    # Run the simulation
-    run_simulation(WitObj, runtime)
-
-    # Get the downtime data
-    downtime = get_downtime(WitObj)
-    downtime = downtime.loc[downtime['Process ID'] == machine_id,'Duration'].values
-
-    return downtime
-
-# Optimizes the MTBF values for a single machine
-def optimize_machine(machine_id, num_categories, historical_data):
-    # Create the parameter space dynamically based on the number of categories
-    space = [Real(5, 100, name=f'mtbf_category_{i+1}') for i in range(num_categories)]
+def simulate_entire_system(params):
+    """
+    Runs the entire system simulation given the parameters for all processes and their maintenance categories.
+    Parameters are passed as a dictionary: {process_id: [mean_times]}
     
-    # Define the objective function for optimization, adjusted for varying numbers of categories
-    @use_named_args(space)
-    def objective(**params):
-        mtbf_values = np.array(list(params.values()))
-        sim_repair = get_sim_repair(machine_id, mtbf_values)
-        cost = np.sum((sim_repair - historical_data)**2)
-        print(cost)
-        return cost
+    Returns:
+    - objective: The objective metric evaluating the performance of the entire simulation, 
+                 e.g., the total absolute deviation from historical durations across all processes.
+    """
+    total_deviation = 0
     
-    # Perform Bayesian Optimization
-    result = gp_minimize(objective,                   # the function to minimize
-                         space,                       # the bounds on each dimension of x
-                         acq_func="gp_hedge",         # the acquisition function
-                         n_calls=50,                  # the number of evaluations of f
-                         n_random_starts=10,          # the number of random initialization points
-                         noise=0.1**2,                # the noise level (optional)
-                         random_state=123)            # the random seed
+    # Example calculation, replace with your actual simulation and evaluation logic
+    for process_id, mean_times in params.items():
+        # For illustration, we simulate a deviation; in practice, this should come from your simulation results
+        simulated_duration = sum(mean_times)  # Placeholder, replace with your simulation call
+        historical_duration = 100  # Placeholder, replace with the actual historical duration for this process
+        total_deviation += abs(simulated_duration - historical_duration)
     
-    print(f"Optimized MTBF values for Machine {machine_id}:", result.x)
-    print(f"Minimum cost achieved for Machine {machine_id}:", result.fun)
+    return total_deviation
 
+# Load the historical data to determine optimization space size
+excel_file = 'path_to_your_historical_data.xlsx'
+df = pd.read_excel(excel_file)
 
-# List of machines
-machine_list = [1,2]
+# Construct the optimization space
+space = []
+for process_id in df['Process ID'].unique():
+    maintenance_ids = df[df['Process ID'] == process_id]['Maintenance ID'].unique()
+    for maintenance_id in maintenance_ids:
+        space.append(Real(0.1, 10, name=f'mean_time_{process_id}_{maintenance_id}'))
 
-# Get historicals
-# historicals = pd.read_excel('historicals.xlsx')
-historicals = pd.read_excel(
-    r"historicals.xlsx"
-)
+# Define the objective function for the optimization
+@use_named_args(space)
+def objective(**params):
+    # Organize parameters by process for simulation input
+    sim_params = {}
+    for key, value in params.items():
+        process_id, _ = key.split('_')[2:]  # Extract process_id from parameter name
+        if process_id not in sim_params:
+            sim_params[process_id] = []
+        sim_params[process_id].append(value)
+    
+    return simulate_entire_system(sim_params)
 
-# Loop over the machine list
-for p in machine_list:
-    historical_data = historicals.loc[historicals['Process ID'] == p, "Duration"].values
-    num_categories = len(historical_data)
-    print(f"Optimizing MTBF values for Machine {p} with {num_categories} categories")
-    optimize_machine(p, num_categories, historical_data)
+# Run the optimization
+res_gp = gp_minimize(objective, space, n_calls=50, random_state=0)
+
+# Results
+print("Optimized Parameters:", res_gp.x)
+print("Minimum Objective Value:", res_gp.fun)
+
+# Optional: Plot the convergence of the optimization
+plot_convergence(res_gp)
